@@ -1,0 +1,49 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              String          @id @default(uuid())
+  email           String          @unique
+  name            String
+  passwordHash    String
+  createdAt       DateTime        @default(now())
+  roleId          String?
+  role            Role?           @relation(fields: [roleId], references: [id])
+  membershipPlanId String?
+  membershipPlan  MembershipPlan? @relation(fields: [membershipPlanId], references: [id])
+}
+
+model Role {
+  id             String           @id @default(uuid())
+  name           String           @unique
+  users          User[]
+  rolePermissions RolePermission[]
+}
+
+model Permission {
+  id             String           @id @default(uuid())
+  name           String           @unique
+  rolePermissions RolePermission[]
+}
+
+model RolePermission {
+  roleId      String
+  permissionId String
+  role        Role       @relation(fields: [roleId], references: [id])
+  permission  Permission @relation(fields: [permissionId], references: [id])
+  @@id([roleId, permissionId])
+}
+
+model MembershipPlan {
+  id        String  @id
+  name      String  @unique
+  currency  String
+  price     Int
+  users     User[]
+}
