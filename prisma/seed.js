@@ -30,7 +30,7 @@ async function upsertRole(name, permissionNames) {
 }
 
 async function upsertPlan(id, name, currency, price, level, isVisible = true) {
-  return prisma.membershipPlan.upsert({
+  return prisma.membershipplan.upsert({
     where: { id },
     update: { name, currency, price, level, isVisible },
     create: { id, name, currency, price, level, isVisible }

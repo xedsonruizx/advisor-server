@@ -23,14 +23,19 @@ router.get('/', requirePermission('manage_users'), async (req, res) => {
   const users = await prisma.user.findMany({
     include: {
       role: true,
-      membershipPlan: true,
+      membershipplan: true,
       _count: {
-        select: { payments: true }
+        select: { payment: true }
       }
     },
     orderBy: { createdAt: 'desc' }
   })
-  res.json(users)
+  const mappedUsers = users.map(user => ({
+    ...user,
+    membershipPlan: user.membershipplan,
+    _count: user._count ? { ...user._count, payments: user._count.payment } : undefined
+  }))
+  res.json(mappedUsers)
 })
 
 // Get Roles
@@ -47,12 +52,16 @@ router.get('/:id', requirePermission('manage_users'), async (req, res) => {
     where: { id: req.params.id },
     include: {
       role: true,
-      membershipPlan: true,
-      payments: { orderBy: { createdAt: 'desc' } }
+      membershipplan: true,
+      payment: { orderBy: { createdAt: 'desc' } }
     }
   })
   if (!user) return res.status(404).json({ error: 'not_found' })
-  res.json(user)
+  res.json({ 
+    ...user, 
+    membershipPlan: user.membershipplan,
+    payments: user.payment 
+  })
 })
 
 // Create User

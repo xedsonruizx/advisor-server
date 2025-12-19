@@ -22,18 +22,18 @@ router.get('/', optionalAuth, async (req, res) => {
   if (userId) {
     const user = await prisma.user.findUnique({ 
       where: { id: userId }, 
-      include: { membershipPlan: true } 
+      include: { membershipplan: true } 
     })
-    userLevel = user?.membershipPlan?.level || 0
+    userLevel = user?.membershipplan?.level || 0
   }
 
   const posts = await prisma.post.findMany({
     orderBy: { createdAt: 'desc' },
-    include: { minPlan: true }
+    include: { membershipplan: true }
   })
 
   const processedPosts = posts.map(post => {
-    const requiredLevel = post.minPlan?.level || 0
+    const requiredLevel = post.membershipplan?.level || 0
     const isLocked = userLevel < requiredLevel
 
     if (isLocked) {
@@ -42,7 +42,7 @@ router.get('/', optionalAuth, async (req, res) => {
         title: post.title,
         shortDescription: post.shortDescription,
         createdAt: post.createdAt,
-        minPlan: post.minPlan,
+        minPlan: post.membershipplan,
         isLocked: true,
         content: null,
         mediaUrl: null,
@@ -50,7 +50,7 @@ router.get('/', optionalAuth, async (req, res) => {
       }
     }
     
-    return { ...post, isLocked: false }
+    return { ...post, minPlan: post.membershipplan, isLocked: false }
   })
 
   res.json(processedPosts)
@@ -64,19 +64,19 @@ router.get('/:id', optionalAuth, async (req, res) => {
   if (userId) {
     const user = await prisma.user.findUnique({ 
       where: { id: userId }, 
-      include: { membershipPlan: true } 
+      include: { membershipplan: true } 
     })
-    userLevel = user?.membershipPlan?.level || 0
+    userLevel = user?.membershipplan?.level || 0
   }
 
   const post = await prisma.post.findUnique({
     where: { id: req.params.id },
-    include: { minPlan: true }
+    include: { membershipplan: true }
   })
 
   if (!post) return res.status(404).json({ error: 'not_found' })
 
-  const requiredLevel = post.minPlan?.level || 0
+  const requiredLevel = post.membershipplan?.level || 0
   const isLocked = userLevel < requiredLevel
 
   if (isLocked) {
@@ -85,14 +85,14 @@ router.get('/:id', optionalAuth, async (req, res) => {
       title: post.title,
       shortDescription: post.shortDescription,
       createdAt: post.createdAt,
-      minPlan: post.minPlan,
+      minPlan: post.membershipplan,
       isLocked: true,
       content: null,
       mediaUrl: null,
       mediaType: null
     })
   } else {
-    res.json({ ...post, isLocked: false })
+    res.json({ ...post, minPlan: post.membershipplan, isLocked: false })
   }
 })
 

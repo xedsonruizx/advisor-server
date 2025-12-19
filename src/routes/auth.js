@@ -91,18 +91,23 @@ router.post('/logout', (req, res) => {
 
 router.get('/me', async (req, res) => {
   const token = req.cookies.token
-  if (!token) return res.status(401).json({ error: 'unauthorized' })
+  // Return 200 with null user instead of 401/500 to avoid console errors on frontend
+  if (!token) return res.json(null)
+  
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET)
     const user = await prisma.user.findUnique({
       where: { id: payload.sub },
-      include: { role: { include: { rolePermissions: { include: { permission: true } } } } }
+      include: { role: { include: { rolepermission: { include: { permission: true } } } } }
     })
-    if (!user) return res.status(401).json({ error: 'unauthorized' })
-    const permissions = (user.role?.rolePermissions || []).map(rp => rp.permission.name)
+    
+    if (!user) return res.json(null)
+    
+    const permissions = (user.role?.rolepermission || []).map(rp => rp.permission.name)
     res.json({ id: user.id, email: user.email, name: user.name, role: user.role?.name || null, permissions })
   } catch {
-    res.status(401).json({ error: 'unauthorized' })
+    // Invalid token, treat as logged out
+    res.json(null)
   }
 })
 

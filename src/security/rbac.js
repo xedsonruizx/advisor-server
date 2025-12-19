@@ -4,7 +4,7 @@ import { prisma } from '../db/prisma.js'
 export async function getUserWithPermissions(userId) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    include: { role: { include: { rolePermissions: { include: { permission: true } } } } }
+    include: { role: { include: { rolepermission: { include: { permission: true } } } } }
   })
   return user
 }
@@ -57,7 +57,7 @@ export function requirePermission(permissionName) {
     try {
       const payload = jwt.verify(token, process.env.JWT_SECRET)
       const user = await getUserWithPermissions(payload.sub)
-      const perms = (user?.role?.rolePermissions || []).map(rp => rp.permission.name)
+      const perms = (user?.role?.rolepermission || []).map(rp => rp.permission.name)
       if (!perms.includes(permissionName)) return res.status(403).json({ error: 'forbidden' })
       req.userId = payload.sub
       next()
