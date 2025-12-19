@@ -5,7 +5,7 @@ const prisma = new PrismaClient()
 
 async function resetAdmin() {
   const email = 'admin@example.com'
-  const newPassword = 'root'
+  const newPassword = 'AdminPassword123!' // Updated to match user attempt
   
   console.log(`Checking user ${email}...`)
   const user = await prisma.user.findUnique({ where: { email } })
