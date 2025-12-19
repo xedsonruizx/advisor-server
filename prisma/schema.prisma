@@ -19,7 +19,7 @@ model membershipplan {
 }
 
 model payment {
-  id        String   @id
+  id        String   @id @default(uuid())
   amount    Int
   currency  String
   status    String
@@ -32,13 +32,13 @@ model payment {
 }
 
 model permission {
-  id             String           @id
+  id             String           @id @default(uuid())
   name           String           @unique(map: "Permission_name_key")
   rolepermission rolepermission[]
 }
 
 model post {
-  id               String          @id
+  id               String          @id @default(uuid())
   title            String
   shortDescription String
   content          String          @db.Text
@@ -52,7 +52,7 @@ model post {
 }
 
 model role {
-  id             String           @id
+  id             String           @id @default(uuid())
   name           String           @unique(map: "Role_name_key")
   rolepermission rolepermission[]
   user           user[]
@@ -69,7 +69,7 @@ model rolepermission {
 }
 
 model user {
-  id               String          @id
+  id               String          @id @default(uuid())
   email            String          @unique(map: "User_email_key")
   name             String
   passwordHash     String
