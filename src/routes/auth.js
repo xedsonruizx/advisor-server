@@ -14,23 +14,29 @@ const registerSchema = z.object({
 
 const loginSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(12)
+  password: z.string().min(1),
+  rememberMe: z.boolean().optional()
 })
 
-function signToken(userId) {
+function signToken(userId, expiresIn = '1h') {
   const secret = process.env.JWT_SECRET
-  const expiresIn = '1h'
   return jwt.sign({ sub: userId }, secret, { expiresIn })
 }
 
-function setAuthCookie(res, token) {
+function setAuthCookie(res, token, maxAge) {
   const isProd = process.env.NODE_ENV === 'production'
-  res.cookie('token', token, {
+  const options = {
     httpOnly: true,
     secure: isProd,
     sameSite: 'lax',
     path: '/'
-  })
+  }
+  
+  if (maxAge) {
+    options.maxAge = maxAge
+  }
+  
+  res.cookie('token', token, options)
 }
 
 router.post('/register', async (req, res) => {
@@ -39,7 +45,8 @@ router.post('/register', async (req, res) => {
   const { email, password, name } = parse.data
   const exists = await prisma.user.findUnique({ where: { email } })
   if (exists) return res.status(409).json({ error: 'email_in_use' })
-  const passwordHash = await bcrypt.hash(password, 12)
+  // Reduced cost to 10 for better performance while maintaining security
+  const passwordHash = await bcrypt.hash(password, 10)
   let role = await prisma.role.findUnique({ where: { name: 'client' } })
   if (!role) role = await prisma.role.create({ data: { name: 'client' } })
   const user = await prisma.user.create({
@@ -52,14 +59,28 @@ router.post('/register', async (req, res) => {
 
 router.post('/login', async (req, res) => {
   const parse = loginSchema.safeParse(req.body)
-  if (!parse.success) return res.status(400).json({ error: 'invalid_input' })
-  const { email, password } = parse.data
+  if (!parse.success) {
+    console.error('Login validation error:', parse.error)
+    return res.status(400).json({ error: 'invalid_input' })
+  }
+  const { email, password, rememberMe } = parse.data
   const user = await prisma.user.findUnique({ where: { email }, include: { role: true } })
-  if (!user) return res.status(401).json({ error: 'invalid_credentials' })
+  if (!user) {
+    console.warn(`Login failed: User not found for email ${email}`)
+    return res.status(401).json({ error: 'invalid_credentials' })
+  }
   const ok = await bcrypt.compare(password, user.passwordHash)
-  if (!ok) return res.status(401).json({ error: 'invalid_credentials' })
-  const token = signToken(user.id)
-  setAuthCookie(res, token)
+  if (!ok) {
+    console.warn(`Login failed: Invalid password for user ${email}`)
+    return res.status(401).json({ error: 'invalid_credentials' })
+  }
+  
+  // 30 days if remember me, otherwise 1 hour
+  const expiresIn = rememberMe ? '30d' : '1h'
+  const maxAge = rememberMe ? 30 * 24 * 60 * 60 * 1000 : undefined
+  
+  const token = signToken(user.id, expiresIn)
+  setAuthCookie(res, token, maxAge)
   res.json({ id: user.id, email: user.email, name: user.name, role: user.role?.name || null })
 })
 

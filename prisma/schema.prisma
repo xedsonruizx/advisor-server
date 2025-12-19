@@ -83,3 +83,11 @@ model user {
   @@index([membershipPlanId], map: "User_membershipPlanId_fkey")
   @@index([roleId], map: "User_roleId_fkey")
 }
+
+model Faq {
+  id        String   @id @default(uuid())
+  question  String
+  answer    String   @db.Text
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+}
