@@ -21,6 +21,18 @@ export function requireAuth(req, res, next) {
   }
 }
 
+export function optionalAuth(req, res, next) {
+  const token = req.cookies.token
+  if (!token) return next()
+  try {
+    const payload = jwt.verify(token, process.env.JWT_SECRET)
+    req.userId = payload.sub
+    next()
+  } catch {
+    next()
+  }
+}
+
 export function requireRole(...roles) {
   return async (req, res, next) => {
     const token = req.cookies.token

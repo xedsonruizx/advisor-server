@@ -17,6 +17,7 @@ model User {
   role            Role?           @relation(fields: [roleId], references: [id])
   membershipPlanId String?
   membershipPlan  MembershipPlan? @relation(fields: [membershipPlanId], references: [id])
+  payments        Payment[]
 }
 
 model Role {
@@ -45,5 +46,31 @@ model MembershipPlan {
   name      String  @unique
   currency  String
   price     Int
+  level     Int     @default(1)
+  isVisible Boolean @default(true)
   users     User[]
+  posts     Post[]
+}
+
+model Post {
+  id               String          @id @default(uuid())
+  title            String
+  shortDescription String
+  content          String          @db.Text
+  mediaUrl         String?
+  mediaType        String?         // 'image' | 'video'
+  createdAt        DateTime        @default(now())
+  minPlanId        String?
+  minPlan          MembershipPlan? @relation(fields: [minPlanId], references: [id])
+}
+
+model Payment {
+  id        String   @id @default(uuid())
+  amount    Int
+  currency  String
+  status    String
+  createdAt DateTime @default(now())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  planId    String?
 }

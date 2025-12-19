@@ -8,6 +8,9 @@ import cookieParser from 'cookie-parser'
 import morgan from 'morgan'
 import { authRouter } from './routes/auth.js'
 import { membershipRouter } from './routes/memberships.js'
+import { postsRouter } from './routes/posts.js'
+import { usersRouter } from './routes/users.js'
+import { paymentsRouter } from './routes/payments.js'
 
 const app = express()
 const port = process.env.PORT || 4000
@@ -34,6 +37,9 @@ app.use(limiter)
 app.get('/health', (req, res) => res.json({ ok: true }))
 app.use('/api/auth', authRouter)
 app.use('/api/memberships', membershipRouter)
+app.use('/api/posts', postsRouter)
+app.use('/api/users', usersRouter)
+app.use('/api/payments', paymentsRouter)
 
 app.use((err, req, res, next) => {
   const status = err.status || 500

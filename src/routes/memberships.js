@@ -12,7 +12,10 @@ const purchaseSchema = z.object({
 })
 
 router.get('/plans', async (req, res) => {
-  const items = await prisma.membershipPlan.findMany()
+  const items = await prisma.membershipPlan.findMany({
+    where: { isVisible: true },
+    orderBy: { price: 'asc' }
+  })
   res.json(items)
 })
 
@@ -49,7 +52,7 @@ router.get('/status', requireAuth, async (req, res) => {
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET)
     const user = await prisma.user.findUnique({ where: { id: payload.sub }, include: { membershipPlan: true } })
-    res.json({ membership: user?.membershipPlan?.id || null })
+    res.json({ membership: user?.membershipPlan || null })
   } catch {
     res.status(401).json({ error: 'unauthorized' })
   }
