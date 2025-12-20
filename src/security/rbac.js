@@ -66,3 +66,17 @@ export function requirePermission(permissionName) {
     }
   }
 }
+
+export async function requireVerifiedEmail(req, res, next) {
+  const token = req.cookies.token
+  if (!token) return res.status(401).json({ error: 'unauthorized' })
+  try {
+    const payload = jwt.verify(token, process.env.JWT_SECRET)
+    const user = await prisma.user.findUnique({ where: { id: payload.sub } })
+    if (!user?.emailVerified) return res.status(403).json({ error: 'email_not_verified' })
+    req.userId = payload.sub
+    next()
+  } catch {
+    res.status(401).json({ error: 'unauthorized' })
+  }
+}

@@ -4,6 +4,7 @@ import { prisma } from '../db/prisma.js'
 import { z } from 'zod'
 import { createCheckoutSession } from '../services/payment.js'
 import { requirePermission, requireAuth } from '../security/rbac.js'
+import { requireVerifiedEmail } from '../security/rbac.js'
 
 const router = Router()
 
@@ -24,7 +25,7 @@ router.get('/plans', async (req, res) => {
   }
 })
 
-router.post('/purchase', requirePermission('purchase_membership'), async (req, res) => {
+router.post('/purchase', requirePermission('purchase_membership'), requireVerifiedEmail, async (req, res) => {
   const token = req.cookies.token
   if (!token) return res.status(401).json({ error: 'unauthorized' })
   let payload

@@ -4,6 +4,9 @@ import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import { prisma } from '../db/prisma.js'
 import { sendMail } from '../services/mailer.js'
+import { buildResetPasswordMail } from '../emails/auth/resetPassword.js'
+import { buildVerifyEmailMail } from '../emails/auth/verifyEmail.js'
+import { v4 as uuidv4 } from 'uuid'
 
 const router = Router()
 
@@ -50,12 +53,24 @@ router.post('/register', async (req, res) => {
   const passwordHash = await bcrypt.hash(password, 10)
   let role = await prisma.role.findUnique({ where: { name: 'client' } })
   if (!role) role = await prisma.role.create({ data: { name: 'client' } })
+  const verificationToken = uuidv4()
   const user = await prisma.user.create({
-    data: { email, name, passwordHash, roleId: role.id }
+    data: { email, name, passwordHash, roleId: role.id, verificationToken }
   })
+  const verifyUrl = `http://localhost:${process.env.PORT || 4000}/api/auth/verify?token=${verificationToken}`
+  try {
+    const mail = buildVerifyEmailMail({
+      name,
+      verifyUrl,
+      clientUrl: process.env.CLIENT_URL || 'http://localhost:5173'
+    })
+    await sendMail({ to: email, subject: mail.subject, html: mail.html, text: mail.text })
+  } catch (e) {
+    console.error('Email verification send failed:', e?.message || e)
+  }
   const token = signToken(user.id)
   setAuthCookie(res, token)
-  res.status(201).json({ id: user.id, email: user.email, name: user.name, role: 'client' })
+  res.status(201).json({ id: user.id, email: user.email, name: user.name, role: 'client', emailVerified: user.emailVerified })
 })
 
 router.post('/login', async (req, res) => {
@@ -82,7 +97,7 @@ router.post('/login', async (req, res) => {
   
   const token = signToken(user.id, expiresIn)
   setAuthCookie(res, token, maxAge)
-  res.json({ id: user.id, email: user.email, name: user.name, role: user.role?.name || null })
+  res.json({ id: user.id, email: user.email, name: user.name, role: user.role?.name || null, emailVerified: user.emailVerified })
 })
 
 router.post('/logout', (req, res) => {
@@ -97,17 +112,62 @@ router.post('/forgot', async (req, res) => {
     const user = await prisma.user.findUnique({ where: { email } })
     // Always respond 200 to avoid email enumeration
     if (user) {
-      await sendMail({
-        to: email,
-        subject: 'Recuperación de contraseña',
-        html: `<p>Hola ${user.name || ''},</p><p>Recibimos una solicitud para restablecer tu contraseña.</p><p>Si no fuiste tú, ignora este mensaje.</p>`,
-        text: `Hola ${user.name || ''},\n\nRecibimos una solicitud para restablecer tu contraseña.\nSi no fuiste tú, ignora este mensaje.`
+      const resetToken = uuidv4()
+      const expires = new Date(Date.now() + 60 * 60 * 1000) // 1h
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { passwordResetToken: resetToken, passwordResetTokenExpires: expires }
       })
+      const resetUrl = `${process.env.CLIENT_URL || 'http://localhost:5173'}/reset-password?token=${resetToken}`
+      try {
+        const mail = buildResetPasswordMail({
+          name: user.name || '',
+          resetUrl,
+          clientUrl: process.env.CLIENT_URL || 'http://localhost:5173'
+        })
+        await sendMail({ to: email, subject: mail.subject, html: mail.html, text: mail.text })
+      } catch (e) {
+        console.error('Password reset send failed:', e?.message || e)
+      }
     }
     res.json({ ok: true })
   } catch (e) {
     res.json({ ok: true })
   }
+})
+
+const resetSchema = z.object({
+  token: z.string().uuid(),
+  password: z.string().min(12)
+})
+
+router.post('/reset', async (req, res) => {
+  const parse = resetSchema.safeParse(req.body)
+  if (!parse.success) return res.status(400).json({ error: 'invalid_input' })
+  const { token, password } = parse.data
+  const user = await prisma.user.findFirst({ where: { passwordResetToken: token } })
+  if (!user) return res.status(400).json({ error: 'invalid_token' })
+  if (!user.passwordResetTokenExpires || user.passwordResetTokenExpires < new Date()) {
+    return res.status(400).json({ error: 'token_expired' })
+  }
+  const passwordHash = await bcrypt.hash(password, 10)
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { passwordHash, passwordResetToken: null, passwordResetTokenExpires: null }
+  })
+  res.json({ ok: true })
+})
+
+router.get('/verify', async (req, res) => {
+  const token = req.query.token
+  if (!token) return res.status(400).json({ error: 'invalid_token' })
+  const user = await prisma.user.findFirst({ where: { verificationToken: token } })
+  if (!user) return res.status(400).json({ error: 'invalid_token' })
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { emailVerified: true, verificationToken: null }
+  })
+  res.json({ ok: true })
 })
 
 router.get('/me', async (req, res) => {
@@ -125,7 +185,7 @@ router.get('/me', async (req, res) => {
     if (!user) return res.json(null)
     
     const permissions = (user.role?.rolepermission || []).map(rp => rp.permission.name)
-    res.json({ id: user.id, email: user.email, name: user.name, role: user.role?.name || null, permissions })
+    res.json({ id: user.id, email: user.email, name: user.name, role: user.role?.name || null, permissions, emailVerified: user.emailVerified })
   } catch {
     // Invalid token, treat as logged out
     res.json(null)

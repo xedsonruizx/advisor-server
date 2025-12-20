@@ -20,7 +20,7 @@ async function upsertRole(name, permissionNames) {
   })
   for (const p of permissionNames) {
     const perm = await upsertPermission(p)
-    await prisma.rolePermission.upsert({
+    await prisma.rolepermission.upsert({
       where: { roleId_permissionId: { roleId: role.id, permissionId: perm.id } },
       update: {},
       create: { roleId: role.id, permissionId: perm.id }
@@ -37,12 +37,12 @@ async function upsertPlan(id, name, currency, price, level, isVisible = true) {
   })
 }
 
-async function upsertUser(email, name, password, role, planId = null) {
+async function upsertUser(email, name, password, role, planId = null, emailVerified = false) {
   const passwordHash = await bcrypt.hash(password, 12)
   return prisma.user.upsert({
     where: { email },
-    update: { name, passwordHash, roleId: role.id, membershipPlanId: planId },
-    create: { email, name, passwordHash, roleId: role.id, membershipPlanId: planId }
+    update: { name, passwordHash, roleId: role.id, membershipPlanId: planId, emailVerified },
+    create: { email, name, passwordHash, roleId: role.id, membershipPlanId: planId, emailVerified }
   })
 }
 
@@ -57,7 +57,7 @@ async function createFakeData(clientRole) {
     const email = `client${i+10}@example.com`
     const planId = plans[i % plans.length]
     
-    const user = await upsertUser(email, name, 'ClientPassword123!', clientRole, planId)
+    const user = await upsertUser(email, name, 'ClientPassword123!', clientRole, planId, false)
     
     // Create fake payments for this user
     const numPayments = Math.floor(Math.random() * 3) + 1
@@ -93,11 +93,11 @@ async function main() {
 
   // Users
   // Admin with lifetime plan
-  await upsertUser('admin@example.com', 'Administrador', 'root', adminRole, lifetimePlan.id)
+  await upsertUser('admin@example.com', 'Administrador', 'root', adminRole, lifetimePlan.id, true)
   
-  await upsertUser('advisor@example.com', 'Asesor Legal', 'AdvisorPassword123!', advisorRole)
+  await upsertUser('advisor@example.com', 'Asesor Legal', 'AdvisorPassword123!', advisorRole, null, true)
   
-  const client1 = await upsertUser('client1@example.com', 'Cliente Demo', 'ClientPassword123!', clientRole, 'basic')
+  const client1 = await upsertUser('client1@example.com', 'Cliente Demo', 'ClientPassword123!', clientRole, 'basic', false)
   
   // Fake Data
   await createFakeData(clientRole)

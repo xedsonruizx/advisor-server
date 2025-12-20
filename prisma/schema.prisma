@@ -76,6 +76,10 @@ model user {
   createdAt        DateTime        @default(now())
   roleId           String?
   membershipPlanId String?
+  emailVerified    Boolean         @default(false)
+  verificationToken String?
+  passwordResetToken String?
+  passwordResetTokenExpires DateTime?
   payment          payment[]
   membershipplan   membershipplan? @relation(fields: [membershipPlanId], references: [id], map: "User_membershipPlanId_fkey")
   role             role?           @relation(fields: [roleId], references: [id], map: "User_roleId_fkey")
