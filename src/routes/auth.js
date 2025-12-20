@@ -3,6 +3,7 @@ import { z } from 'zod'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import { prisma } from '../db/prisma.js'
+import { sendMail } from '../services/mailer.js'
 
 const router = Router()
 
@@ -89,6 +90,26 @@ router.post('/logout', (req, res) => {
   res.status(204).end()
 })
 
+router.post('/forgot', async (req, res) => {
+  const email = req.body?.email
+  if (!email) return res.status(400).json({ error: 'invalid_input' })
+  try {
+    const user = await prisma.user.findUnique({ where: { email } })
+    // Always respond 200 to avoid email enumeration
+    if (user) {
+      await sendMail({
+        to: email,
+        subject: 'Recuperación de contraseña',
+        html: `<p>Hola ${user.name || ''},</p><p>Recibimos una solicitud para restablecer tu contraseña.</p><p>Si no fuiste tú, ignora este mensaje.</p>`,
+        text: `Hola ${user.name || ''},\n\nRecibimos una solicitud para restablecer tu contraseña.\nSi no fuiste tú, ignora este mensaje.`
+      })
+    }
+    res.json({ ok: true })
+  } catch (e) {
+    res.json({ ok: true })
+  }
+})
+
 router.get('/me', async (req, res) => {
   const token = req.cookies.token
   // Return 200 with null user instead of 401/500 to avoid console errors on frontend
@@ -108,6 +129,47 @@ router.get('/me', async (req, res) => {
   } catch {
     // Invalid token, treat as logged out
     res.json(null)
+  }
+})
+
+const updateMeSchema = z.object({
+  name: z.string().min(2).optional(),
+  email: z.string().email().optional(),
+  currentPassword: z.string().min(1).optional(),
+  password: z.string().min(12).optional()
+}).refine((data) => {
+  if (data.password && !data.currentPassword) return false
+  return true
+}, { message: 'current_password_required', path: ['currentPassword'] })
+
+router.put('/me', async (req, res) => {
+  const token = req.cookies.token
+  if (!token) return res.status(401).json({ error: 'unauthorized' })
+  const parsed = updateMeSchema.safeParse(req.body)
+  if (!parsed.success) return res.status(400).json({ error: 'invalid_input' })
+  try {
+    const payload = jwt.verify(token, process.env.JWT_SECRET)
+    const user = await prisma.user.findUnique({ where: { id: payload.sub } })
+    if (!user) return res.status(404).json({ error: 'not_found' })
+    
+    const data = {}
+    if (parsed.data.name) data.name = parsed.data.name
+    if (parsed.data.email && parsed.data.email !== user.email) {
+      const exists = await prisma.user.findUnique({ where: { email: parsed.data.email } })
+      if (exists) return res.status(409).json({ error: 'email_in_use' })
+      data.email = parsed.data.email
+    }
+    if (parsed.data.password) {
+      const ok = await bcrypt.compare(parsed.data.currentPassword || '', user.passwordHash)
+      if (!ok) return res.status(401).json({ error: 'invalid_current_password' })
+      data.passwordHash = await bcrypt.hash(parsed.data.password, 10)
+    }
+    
+    const updated = await prisma.user.update({ where: { id: user.id }, data })
+    const role = await prisma.role.findUnique({ where: { id: updated.roleId } })
+    res.json({ id: updated.id, email: updated.email, name: updated.name, role: role?.name || null })
+  } catch (e) {
+    res.status(500).json({ error: 'update_failed' })
   }
 })
 
