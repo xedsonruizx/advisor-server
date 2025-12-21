@@ -206,15 +206,69 @@ router.post('/reset', async (req, res) => {
 
 router.get('/verify', async (req, res) => {
   const token = req.query.token
-  if (!token) return res.status(400).json({ error: 'invalid_token' })
+  const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173'
+  
+  if (!token) {
+    return res.redirect(`${clientUrl}/login?error=invalid_token`)
+  }
+  
   const user = await prisma.user.findFirst({ where: { verificationToken: token } })
-  if (!user) return res.status(400).json({ error: 'invalid_token' })
+  
+  if (!user) {
+    // Check if user is already verified (token is null)
+    // We can't easily know if the token *was* valid, but usually this happens on double click
+    // Let's redirect to login with a generic error or info
+    return res.redirect(`${clientUrl}/login?error=invalid_or_expired_token`)
+  }
+  
   await prisma.user.update({
     where: { id: user.id },
     data: { emailVerified: true, verificationToken: null }
   })
-  const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173'
+  
   res.redirect(`${clientUrl}/login?verified=true`)
+})
+
+router.post('/verify-resend', async (req, res) => {
+  const token = req.cookies.token
+  if (!token) return res.status(401).json({ error: 'unauthorized' })
+
+  try {
+    const payload = jwt.verify(token, process.env.JWT_SECRET)
+    const user = await prisma.user.findUnique({ where: { id: payload.sub } })
+    
+    if (!user) return res.status(404).json({ error: 'not_found' })
+    if (user.emailVerified) return res.status(400).json({ error: 'already_verified' })
+    
+    // Reuse existing token if present, otherwise create new one
+    // But for security/freshness, let's just generate a new one if it's missing
+    // Actually, keep the same one if possible to avoid invalidating previous email if user clicks twice fast
+    let verificationToken = user.verificationToken
+    if (!verificationToken) {
+       verificationToken = uuidv4()
+       await prisma.user.update({
+         where: { id: user.id },
+         data: { verificationToken }
+       })
+    }
+
+    const verifyUrl = `http://localhost:${process.env.PORT || 4000}/api/auth/verify?token=${verificationToken}`
+    
+    try {
+      const mail = buildVerifyEmailMail({
+        name: user.name,
+        verifyUrl,
+        clientUrl: process.env.CLIENT_URL || 'http://localhost:5173'
+      })
+      await sendMail({ to: user.email, subject: mail.subject, html: mail.html, text: mail.text })
+      res.json({ ok: true })
+    } catch (e) {
+      console.error('Resend verification email failed:', e)
+      res.status(500).json({ error: 'email_send_failed' })
+    }
+  } catch (e) {
+    res.status(401).json({ error: 'invalid_token' })
+  }
 })
 
 router.get('/me', async (req, res) => {
