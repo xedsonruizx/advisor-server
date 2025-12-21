@@ -1,4 +1,4 @@
-export function renderEmail({ title, subtitle, greeting, message, highlights, actionUrl, actionText, footer, supportUrl, supportText }) {
+export function renderEmail({ title, subtitle, greeting, message, highlights, actionUrl, actionText, footer, supportUrl, supportText, badge, extra }) {
   const brand = process.env.MAIL_BRAND_NAME || 'Elite Advisors'
   const colors = {
     primary: '#0f172a',
@@ -16,6 +16,8 @@ export function renderEmail({ title, subtitle, greeting, message, highlights, ac
   const list = Array.isArray(highlights) ? highlights : []
   const helpUrl = supportUrl || ''
   const helpText = supportText || 'Centro de Ayuda'
+  const badgeText = badge || ''
+  const extraHtml = extra || ''
   return `
   <!doctype html>
   <html lang="es">
@@ -47,6 +49,8 @@ export function renderEmail({ title, subtitle, greeting, message, highlights, ac
                 <td class="content" style="padding:32px;">
                   <h1 style="font-size:22px; margin:0 0 12px; font-family: Georgia, serif; color:${colors.textDark};">${title}</h1>
                   ${safeSubtitle ? `<div style="font-size:13px; color:${colors.secondary}; text-transform:uppercase; letter-spacing:1px; margin-bottom:16px;">${safeSubtitle}</div>` : ''}
+                  <div style="width:56px; height:3px; background:${colors.secondary}; border-radius:2px; margin:8px 0 16px;"></div>
+                  ${badgeText ? `<div style="display:inline-block; padding:6px 10px; border:1px solid ${colors.secondary}; border-radius:999px; color:${colors.secondary}; font-size:12px; letter-spacing:0.5px; margin-bottom:16px;">${badgeText}</div>` : ''}
                   ${greeting ? `<p style="margin:0 0 12px; line-height:1.6; color:${colors.textDark};">${greeting}</p>` : ''}
                   ${message ? `<p style="margin:0 0 16px; line-height:1.6; color:${colors.textMuted};">${message}</p>` : ''}
                   ${list.length ? `
@@ -64,6 +68,7 @@ export function renderEmail({ title, subtitle, greeting, message, highlights, ac
                       </tr>
                     </table>
                   ` : ''}
+                  ${extraHtml ? `<div style="margin:8px 0 20px;">${extraHtml}</div>` : ''}
                   ${safeUrl ? `
                     <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin:12px 0 24px;">
                       <tr>

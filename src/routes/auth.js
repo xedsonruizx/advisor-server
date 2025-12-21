@@ -12,9 +12,32 @@ const router = Router()
 
 const registerSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(12),
-  name: z.string().min(2)
+  password: z.string().min(8),
+  name: z.string().min(2),
+  recaptchaToken: z.string().optional()
 })
+
+async function verifyRecaptcha(token) {
+  if (!token) return false
+  
+  // Basic siteverify check (compatible with Enterprise if using Legacy keys or standard keys)
+  // For full Enterprise features, use Google Cloud Client Library
+  const secret = process.env.RECAPTCHA_SECRET_KEY
+  if (!secret || secret.startsWith('dummy')) {
+    console.warn('Recaptcha secret not configured, skipping verification')
+    return true
+  }
+
+  try {
+    const url = `https://www.google.com/recaptcha/api/siteverify?secret=${secret}&response=${token}`
+    const response = await fetch(url, { method: 'POST' })
+    const data = await response.json()
+    return data.success === true
+  } catch (e) {
+    console.error('Recaptcha verification error:', e)
+    return false
+  }
+}
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -46,7 +69,13 @@ function setAuthCookie(res, token, maxAge) {
 router.post('/register', async (req, res) => {
   const parse = registerSchema.safeParse(req.body)
   if (!parse.success) return res.status(400).json({ error: 'invalid_input' })
-  const { email, password, name } = parse.data
+  const { email, password, name, recaptchaToken } = parse.data
+  
+  if (recaptchaToken) {
+    const valid = await verifyRecaptcha(recaptchaToken)
+    if (!valid) return res.status(400).json({ error: 'invalid_recaptcha' })
+  }
+  
   const exists = await prisma.user.findUnique({ where: { email } })
   if (exists) return res.status(409).json({ error: 'email_in_use' })
   // Reduced cost to 10 for better performance while maintaining security
@@ -66,7 +95,7 @@ router.post('/register', async (req, res) => {
     })
     await sendMail({ to: email, subject: mail.subject, html: mail.html, text: mail.text })
   } catch (e) {
-    console.error('Email verification send failed:', e?.message || e)
+    console.error('Email verification send failed:', e)
   }
   const token = signToken(user.id)
   setAuthCookie(res, token)
@@ -76,18 +105,15 @@ router.post('/register', async (req, res) => {
 router.post('/login', async (req, res) => {
   const parse = loginSchema.safeParse(req.body)
   if (!parse.success) {
-    console.error('Login validation error:', parse.error)
     return res.status(400).json({ error: 'invalid_input' })
   }
   const { email, password, rememberMe } = parse.data
   const user = await prisma.user.findUnique({ where: { email }, include: { role: true } })
   if (!user) {
-    console.warn(`Login failed: User not found for email ${email}`)
     return res.status(401).json({ error: 'invalid_credentials' })
   }
   const ok = await bcrypt.compare(password, user.passwordHash)
   if (!ok) {
-    console.warn(`Login failed: Invalid password for user ${email}`)
     return res.status(401).json({ error: 'invalid_credentials' })
   }
   
@@ -107,7 +133,15 @@ router.post('/logout', (req, res) => {
 
 router.post('/forgot', async (req, res) => {
   const email = req.body?.email
+  const recaptchaToken = req.body?.recaptchaToken
+  
   if (!email) return res.status(400).json({ error: 'invalid_input' })
+  
+  if (recaptchaToken) {
+    const valid = await verifyRecaptcha(recaptchaToken)
+    if (!valid) return res.status(400).json({ error: 'invalid_recaptcha' })
+  }
+
   try {
     const user = await prisma.user.findUnique({ where: { email } })
     // Always respond 200 to avoid email enumeration
@@ -127,7 +161,7 @@ router.post('/forgot', async (req, res) => {
         })
         await sendMail({ to: email, subject: mail.subject, html: mail.html, text: mail.text })
       } catch (e) {
-        console.error('Password reset send failed:', e?.message || e)
+        console.error('Forgot password email failed:', e)
       }
     }
     res.json({ ok: true })
@@ -138,13 +172,25 @@ router.post('/forgot', async (req, res) => {
 
 const resetSchema = z.object({
   token: z.string().uuid(),
-  password: z.string().min(12)
+  password: z.string().min(8)
 })
 
 router.post('/reset', async (req, res) => {
   const parse = resetSchema.safeParse(req.body)
-  if (!parse.success) return res.status(400).json({ error: 'invalid_input' })
-  const { token, password } = parse.data
+  if (!parse.success) {
+    const t = req.body?.token
+    const p = req.body?.password
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+    if (!t || typeof t !== 'string' || !uuidRegex.test(t)) {
+      return res.status(400).json({ error: 'invalid_token' })
+    }
+    if (!p || typeof p !== 'string' || p.length < 8) {
+      return res.status(400).json({ error: 'password_too_short' })
+    }
+    return res.status(400).json({ error: 'invalid_token' })
+  }
+  const { token: rawToken, password } = parse.data
+  const token = String(rawToken).trim()
   const user = await prisma.user.findFirst({ where: { passwordResetToken: token } })
   if (!user) return res.status(400).json({ error: 'invalid_token' })
   if (!user.passwordResetTokenExpires || user.passwordResetTokenExpires < new Date()) {
@@ -167,7 +213,8 @@ router.get('/verify', async (req, res) => {
     where: { id: user.id },
     data: { emailVerified: true, verificationToken: null }
   })
-  res.json({ ok: true })
+  const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173'
+  res.redirect(`${clientUrl}/login?verified=true`)
 })
 
 router.get('/me', async (req, res) => {
@@ -196,7 +243,7 @@ const updateMeSchema = z.object({
   name: z.string().min(2).optional(),
   email: z.string().email().optional(),
   currentPassword: z.string().min(1).optional(),
-  password: z.string().min(12).optional()
+  password: z.string().min(8).optional()
 }).refine((data) => {
   if (data.password && !data.currentPassword) return false
   return true
