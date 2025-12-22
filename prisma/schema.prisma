@@ -69,20 +69,21 @@ model rolepermission {
 }
 
 model user {
-  id               String          @id @default(uuid())
-  email            String          @unique(map: "User_email_key")
-  name             String
-  passwordHash     String
-  createdAt        DateTime        @default(now())
-  roleId           String?
-  membershipPlanId String?
-  emailVerified    Boolean         @default(false)
-  verificationToken String?
-  passwordResetToken String?
+  id                        String          @id @default(uuid())
+  email                     String          @unique(map: "User_email_key")
+  name                      String
+  passwordHash              String
+  createdAt                 DateTime        @default(now())
+  roleId                    String?
+  membershipPlanId          String?
+  emailVerified             Boolean         @default(false)
+  verificationToken         String?
+  passwordResetToken        String?
   passwordResetTokenExpires DateTime?
-  payment          payment[]
-  membershipplan   membershipplan? @relation(fields: [membershipPlanId], references: [id], map: "User_membershipPlanId_fkey")
-  role             role?           @relation(fields: [roleId], references: [id], map: "User_roleId_fkey")
+  payment                   payment[]
+  membershipplan            membershipplan? @relation(fields: [membershipPlanId], references: [id], map: "User_membershipPlanId_fkey")
+  role                      role?           @relation(fields: [roleId], references: [id], map: "User_roleId_fkey")
+  evaluation                Evaluation?
 
   @@index([membershipPlanId], map: "User_membershipPlanId_fkey")
   @@index([roleId], map: "User_roleId_fkey")
@@ -94,4 +95,73 @@ model Faq {
   answer    String   @db.Text
   order     Int      @default(0)
   createdAt DateTime @default(now())
+}
+
+model EvaluationQuestion {
+  id               String               @id @default(uuid())
+  text             String               @db.Text
+  type             String // 'text', 'number', 'select', 'radio', 'checkbox', 'date'
+  order            Int                  @default(0)
+  required         Boolean              @default(true)
+  options          EvaluationOption[]
+  parentQuestionId String?
+  parentOptionId   String?
+  conditionOperator String? // e.g. 'equals', 'contains', 'greater_than'
+  conditionValue    String? // The value to compare against
+  parentQuestion   EvaluationQuestion?  @relation("QuestionDependency", fields: [parentQuestionId], references: [id])
+  parentOption     EvaluationOption?    @relation("OptionDependency", fields: [parentOptionId], references: [id])
+  childQuestions   EvaluationQuestion[] @relation("QuestionDependency")
+  
+  responses        EvaluationResponse[]
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  @@index([parentQuestionId])
+  @@index([parentOptionId])
+}
+
+model EvaluationOption {
+  id         String               @id @default(uuid())
+  text       String
+  value      String? // Can hold a numeric value or code
+  score      Int                  @default(0) // Points for this answer
+  penalty    String?              @db.Text // Rich text warning/penalty description
+  questionId String
+  question   EvaluationQuestion   @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  responses  EvaluationResponse[]
+  dependentQuestions EvaluationQuestion[] @relation("OptionDependency")
+  order      Int                  @default(0)
+
+  @@index([questionId])
+}
+
+model Evaluation {
+  id          String               @id @default(uuid())
+  userId      String               @unique // One evaluation per user
+  user        user                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  responses   EvaluationResponse[]
+  score       Int                  @default(0)
+  maxScore    Int                  @default(0)
+  status      String               @default("in_progress") // 'in_progress', 'completed'
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  completedAt DateTime?
+
+  @@index([userId])
+}
+
+model EvaluationResponse {
+  id           String             @id @default(uuid())
+  evaluationId String
+  evaluation   Evaluation         @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+  questionId   String
+  question     EvaluationQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  optionId     String?
+  option       EvaluationOption?  @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  textValue    String?            @db.Text // For text/number inputs
+  createdAt    DateTime           @default(now())
+
+  @@index([evaluationId])
+  @@index([questionId])
+  @@index([optionId])
 }
