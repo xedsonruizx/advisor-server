@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { z } from 'zod'
 import { prisma } from '../db/prisma.js'
+import { generatePDF, deleteFile } from '../services/pdf.js'
 
 const router = Router()
 
@@ -317,9 +318,14 @@ router.get('/results/:userId', async (req, res) => {
     const evaluation = await prisma.evaluation.findUnique({
       where: { userId },
       include: {
+        user: { select: { name: true, email: true } },
         responses: {
           include: {
-            question: true,
+            question: {
+                include: {
+                    options: true
+                }
+            },
             option: true
           }
         }
@@ -334,6 +340,35 @@ router.get('/results/:userId', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch results' })
   }
 })
+
+// Generate PDF
+router.post('/pdf', async (req, res) => {
+  try {
+    const { htmlContent, userId } = req.body;
+    
+    if (!htmlContent || !userId) {
+      return res.status(400).json({ error: 'Missing htmlContent or userId' });
+    }
+
+    const fileName = `evaluation-${userId}-${Date.now()}.pdf`;
+    const filePath = await generatePDF(htmlContent, fileName);
+
+    res.download(filePath, fileName, (err) => {
+      if (err) {
+        console.error('Error sending file:', err);
+        if (!res.headersSent) {
+          res.status(500).json({ error: 'Error downloading file' });
+        }
+      }
+      // Delete file after download (or error)
+      deleteFile(filePath);
+    });
+
+  } catch (error) {
+    console.error('Error generating PDF:', error);
+    res.status(500).json({ error: 'Failed to generate PDF' });
+  }
+});
 
 // Reset Evaluation
 router.delete('/reset/:userId', async (req, res) => {

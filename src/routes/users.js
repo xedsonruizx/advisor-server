@@ -24,6 +24,9 @@ router.get('/', requirePermission('manage_users'), async (req, res) => {
     include: {
       role: true,
       membershipplan: true,
+      evaluation: {
+        select: { id: true, score: true } // Include evaluation summary
+      },
       _count: {
         select: { payment: true }
       }
