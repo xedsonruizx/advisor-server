@@ -130,6 +130,7 @@ model EvaluationOption {
   question   EvaluationQuestion   @relation(fields: [questionId], references: [id], onDelete: Cascade)
   responses  EvaluationResponse[]
   dependentQuestions EvaluationQuestion[] @relation("OptionDependency")
+  conditionOperator String? // For numeric questions: 'greater_than', 'less_than', 'equals', 'not_equals', 'greater_than_or_equal', 'less_than_or_equal'
   order      Int                  @default(0)
 
   @@index([questionId])

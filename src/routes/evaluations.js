@@ -21,6 +21,7 @@ const optionSchema = z.object({
   value: z.string().nullish(),
   score: z.number().default(0),
   penalty: z.string().nullish(),
+  conditionOperator: z.string().nullish(),
   order: z.number().default(0)
 })
 
@@ -208,8 +209,12 @@ router.post('/submit', async (req, res) => {
       } else if (question.type === 'checkbox') {
         const sumOptionScores = question.options.reduce((sum, opt) => sum + (opt.score > 0 ? opt.score : 0), 0)
         maxPossibleScore += sumOptionScores
+      } else if (question.type === 'number' && question.options && question.options.length > 0) {
+        // For number questions with rules, max score should be just 1 (base points for answering)
+        // because rules are now ONLY for penalties (messages), not scoring adjustment.
+        maxPossibleScore += 1 
       } else {
-        // Text/Number/Date
+        // Text/Number (without rules)/Date
         maxPossibleScore += 1
       }
 
@@ -242,10 +247,44 @@ router.post('/submit', async (req, res) => {
       } 
       // Handle Text/Number
       else if (resp.textValue) {
-        totalScore += 1
+        let matchedOptionId = null
+        let points = 1 // Default point
+
+        // Check if there are rules (options) for this number question
+        if (question.type === 'number' && question.options && question.options.length > 0) {
+          const val = parseFloat(resp.textValue)
+          if (!isNaN(val)) {
+            // Sort options by order to prioritize
+            const sortedOptions = [...question.options].sort((a, b) => a.order - b.order)
+            
+            for (const opt of sortedOptions) {
+              if (opt.conditionOperator && opt.value) {
+                const target = parseFloat(opt.value)
+                let match = false
+                switch (opt.conditionOperator) {
+                  case 'equals': match = val === target; break;
+                  case 'not_equals': match = val !== target; break;
+                  case 'greater_than': match = val > target; break;
+                  case 'less_than': match = val < target; break;
+                  case 'greater_than_or_equal': match = val >= target; break;
+                  case 'less_than_or_equal': match = val <= target; break;
+                }
+                
+                if (match) {
+                  // points = opt.score // Score ignored for number rules, only penalty text used
+                  matchedOptionId = opt.id
+                  break; // Stop at first match
+                }
+              }
+            }
+          }
+        }
+
+        totalScore += points
         processedResponses.push({
           questionId: resp.questionId,
-          textValue: resp.textValue
+          textValue: resp.textValue,
+          optionId: matchedOptionId // Link the rule if matched
         })
       }
     }
