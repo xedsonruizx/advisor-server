@@ -13,6 +13,7 @@ import { usersRouter } from './routes/users.js'
 import { paymentsRouter } from './routes/payments.js'
 import { faqsRouter } from './routes/faqs.js'
 import { evaluationRouter } from './routes/evaluations.js'
+import { docsRouter } from './routes/docs.js'
 
 const app = express()
 const port = process.env.PORT || 4000
@@ -44,6 +45,7 @@ app.use('/api/users', usersRouter)
 app.use('/api/payments', paymentsRouter)
 app.use('/api/faqs', faqsRouter)
 app.use('/api/evaluations', evaluationRouter)
+app.use('/api/docs', docsRouter)
 
 app.use((err, req, res, next) => {
   const status = err.status || 500

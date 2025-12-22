@@ -16,6 +16,7 @@ model membershipplan {
   isVisible Boolean @default(true)
   post      post[]
   user      user[]
+  docs      DocumentationItem[]
 }
 
 model payment {
@@ -165,4 +166,23 @@ model EvaluationResponse {
   @@index([evaluationId])
   @@index([questionId])
   @@index([optionId])
+}
+
+model DocumentationItem {
+  id          String    @id @default(uuid())
+  title       String
+  content     String?   @db.Text
+  type        String    @default("folder") // 'folder' or 'file'
+  isDraft     Boolean   @default(true)
+  parentId    String?
+  parent      DocumentationItem?  @relation("DocTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children    DocumentationItem[] @relation("DocTree")
+  order       Int       @default(0)
+  minPlanId   String?
+  membershipplan membershipplan? @relation(fields: [minPlanId], references: [id])
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([parentId])
+  @@index([minPlanId])
 }
